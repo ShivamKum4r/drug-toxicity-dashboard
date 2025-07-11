@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: tox21-streamlit
+    env: docker
+    region: oregon  # You can change this to frankfurt, singapore, etc.
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
