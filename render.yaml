@@ -3,8 +3,7 @@ services:
     name: drug-toxicity-dashboard
     env: docker
     plan: free
-    autoDeploy: true
     region: oregon
-    healthCheckPath: /
-    buildCommand: ""
-    startCommand: ""
+    autoDeploy: true
+    dockerfilePath: Dockerfile
+    healthCheckPath: /_stcore/health
