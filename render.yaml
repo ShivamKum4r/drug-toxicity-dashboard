@@ -1,11 +1,10 @@
 services:
   - type: web
-    name: tox21-streamlit
+    name: drug-toxicity-dashboard
     env: docker
-    region: oregon  # You can change this to frankfurt, singapore, etc.
     plan: free
-    dockerfilePath: ./Dockerfile
     autoDeploy: true
-    envVars:
-      - key: PYTHONUNBUFFERED
-        value: "1"
+    region: oregon
+    healthCheckPath: /
+    buildCommand: ""
+    startCommand: ""
