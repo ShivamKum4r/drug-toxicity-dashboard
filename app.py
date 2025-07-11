@@ -1,3 +1,18 @@
+# Safe monkey patch to fix Streamlit reloader crash due to torch.classes bug
+import types
+import torch
+
+try:
+    import torch.classes
+    if not hasattr(torch.classes, "__path__"):
+        torch.classes.__path__ = types.SimpleNamespace(_path=[])
+except Exception:
+    pass  # Safe fallback if torch.classes doesn't exist
+
+
+
+
+
 # ------------------- Imports -------------------
 import streamlit as st
 import numpy as np
@@ -65,48 +80,28 @@ gcn_model = RichGCNModel()
 fp_loaded = gcn_loaded = False
 
 # Load Fingerprint Model
-msg_fp = st.empty()
-with msg_fp.container():
-    with st.spinner("📦 Loading fingerprint model..."):
-        time.sleep(6)
-        try:
-            fp_model.load_state_dict(torch.load("tox_model.pt", map_location=torch.device("cpu")))
-            fp_model.eval()
-            fp_loaded = True
-            st.success("✅ Fingerprint model loaded.")
-        except Exception as e:
-            st.warning(f"⚠️ Fingerprint model not loaded: {e}")
-    time.sleep(1)
-    msg_fp.empty()
+try:
+    fp_model.load_state_dict(torch.load("tox_model.pt", map_location=torch.device("cpu")))
+    fp_model.eval()
+    fp_loaded = True
+except Exception as e:
+    st.warning(f"⚠️ Fingerprint model not loaded: {e}")
 
 # Load GCN Model
-msg_gcn = st.empty()
-with msg_gcn.container():
-    with st.spinner("📦 Loading GCN model..."):
-        time.sleep(2)
-        try:
-            gcn_model.load_state_dict(torch.load("gcn_model.pt", map_location=torch.device("cpu")))
-            gcn_model.eval()
-            gcn_loaded = True
-            st.success("✅ GCN model loaded.")
-        except Exception as e:
-            st.warning(f"⚠️ GCN model not loaded: {e}")
-    time.sleep(1)
-    msg_gcn.empty()
+try:
+    gcn_model.load_state_dict(torch.load("gcn_model.pt", map_location=torch.device("cpu")))
+    gcn_model.eval()
+    gcn_loaded = True
+except Exception as e:
+    st.warning(f"⚠️ GCN model not loaded: {e}")
+
 
 # Load Best Threshold
-msg_threshold = st.empty()
-with msg_threshold.container():
-    with st.spinner("📊 Loading best threshold..."):
-        time.sleep(2)
-        try:
-            best_threshold = float(np.load("gcn_best_threshold.npy"))
-        except Exception as e:
-            best_threshold = 0.5
-            st.warning(f"⚠️ Using default threshold (0.5) for GCN model. Reason: {e}")
-    st.success("✅ All models loaded. Dashboard is ready!")
-    time.sleep(2)
-    msg_threshold.empty()
+try:
+    best_threshold = float(np.load("gcn_best_threshold.npy"))
+except Exception as e:
+    best_threshold = 0.5
+    st.warning(f"⚠️ Using default threshold (0.5) for GCN model. Reason: {e}")
 
 
 
@@ -304,36 +299,35 @@ with tab1:
         predict_btn = st.form_submit_button("🔍 Predict")
 
     if predict_btn:
-        with st.spinner("Predicting..."):
-            mol = Chem.MolFromSmiles(smiles_fp)
-            if mol:
-                fp = fp_gen.GetFingerprint(mol)
-                arr = np.array(fp).reshape(1, -1)
-                tensor = torch.tensor(arr).float()
-                with torch.no_grad():
-                    output = fp_model(tensor)
-                    prob = torch.sigmoid(output).item()
-                    raw_score = output.item()
-                    label = "Toxic" if prob > 0.5 else "Non-toxic"
-                    color = "red" if label == "Toxic" else "green"
+        mol = Chem.MolFromSmiles(smiles_fp)
+        if mol:
+            fp = fp_gen.GetFingerprint(mol)
+            arr = np.array(fp).reshape(1, -1)
+            tensor = torch.tensor(arr).float()
+            with torch.no_grad():
+                output = fp_model(tensor)
+                prob = torch.sigmoid(output).item()
+                raw_score = output.item()
+                label = "Toxic" if prob > 0.5 else "Non-toxic"
+                color = "red" if label == "Toxic" else "green"
 
-                st.markdown(f"<h4>🧾 Prediction: <span style='color:{color}'>{label}</span> — <code>{prob:.3f}</code></h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4>🧾 Prediction: <span style='color:{color}'>{label}</span> — <code>{prob:.3f}</code></h4>", unsafe_allow_html=True)
 
-                if show_debug_fp:
-                    st.code(f"📉 Raw Logit: {raw_score:.4f}", language='text')
-                    st.markdown("#### Fingerprint Vector (First 20 bits)")
-                    st.code(str(arr[0][:20]) + " ...", language="text")
+            if show_debug_fp:
+                st.code(f"📉 Raw Logit: {raw_score:.4f}", language='text')
+                st.markdown("#### Fingerprint Vector (First 20 bits)")
+                st.code(str(arr[0][:20]) + " ...", language="text")
 
-                st.image(Draw.MolToImage(mol), caption="Molecular Structure", width=250)
+            st.image(Draw.MolToImage(mol), caption="Molecular Structure", width=250)
 
-                info = get_molecule_info(mol)
-                st.markdown("### Molecule Info:")
-                for k, v in info.items():
-                    st.markdown(f"**{k}:** {v}")
+            info = get_molecule_info(mol)
+            st.markdown("### Molecule Info:")
+            for k, v in info.items():
+                st.markdown(f"**{k}:** {v}")
 
-                st.plotly_chart(plot_distribution(df, 'fp', prob), use_container_width=True)
-            else:
-                st.error("❌ Invalid SMILES input. Please check your string.")
+            st.plotly_chart(plot_distribution(df, 'fp', prob), use_container_width=True)
+        else:
+            st.error("❌ Invalid SMILES input. Please check your string.")
 
     with st.expander("📌 Example SMILES to Try"):
         st.markdown("""
@@ -375,49 +369,47 @@ with tab2:
         gcn_btn = st.form_submit_button("🔍 Predict")
 
     if gcn_btn:
-        with st.spinner("Predicting..."):
-            mol = Chem.MolFromSmiles(smiles_gcn)
-
-            if mol is None:
-                st.error("❌ Invalid SMILES: could not parse molecule.")
-            elif not is_supported(mol):
-                st.error("⚠️ This molecule contains unsupported atoms (e.g. Sn, P, etc.). GCN model only supports common organic elements.")
+        mol = Chem.MolFromSmiles(smiles_gcn)
+        if mol is None:
+            st.error("❌ Invalid SMILES: could not parse molecule.")
+        elif not is_supported(mol):
+            st.error("⚠️ This molecule contains unsupported atoms (e.g. Sn, P, etc.). GCN model only supports common organic elements.")
+        else:
+            graph = smiles_to_graph(smiles_gcn)
+            if graph is None:
+                st.error("❌ SMILES is valid but could not be converted to graph. Possibly malformed structure.")
             else:
-                graph = smiles_to_graph(smiles_gcn)
-                if graph is None:
-                    st.error("❌ SMILES is valid but could not be converted to graph. Possibly malformed structure.")
-                else:
-                    batch = Batch.from_data_list([graph])
-                    with torch.no_grad():
-                        out = gcn_model(batch)
-                        prob = torch.sigmoid(out).item()
-                        raw_score = out.item()
-                        label = "Toxic" if prob > best_threshold else "Non-toxic"
-                        color = "red" if label == "Toxic" else "green"
+                batch = Batch.from_data_list([graph])
+                with torch.no_grad():
+                    out = gcn_model(batch)
+                    prob = torch.sigmoid(out).item()
+                    raw_score = out.item()
+                    label = "Toxic" if prob > best_threshold else "Non-toxic"
+                    color = "red" if label == "Toxic" else "green"
 
-                    st.markdown(f"<h4>🧾 GCN Prediction: <span style='color:{color}'>{label}</span> — <code>{prob:.3f}</code></h4>", unsafe_allow_html=True)
+                st.markdown(f"<h4>🧾 GCN Prediction: <span style='color:{color}'>{label}</span> — <code>{prob:.3f}</code></h4>", unsafe_allow_html=True)
 
-                    if show_debug:
-                        st.code(f"📉 Raw Logit: {raw_score:.4f}", language='text')
+                if show_debug:
+                    st.code(f"📉 Raw Logit: {raw_score:.4f}", language='text')
 
-                    st.image(Draw.MolToImage(mol), caption="Molecular Structure", width=250)
+                st.image(Draw.MolToImage(mol), caption="Molecular Structure", width=250)
 
-                    def get_molecule_info(mol):
-                        return {
-                            "Molecular Weight": round(Chem.Descriptors.MolWt(mol), 2),
-                            "LogP": round(Chem.Crippen.MolLogP(mol), 2),
-                            "Num H-Bond Donors": Chem.Lipinski.NumHDonors(mol),
-                            "Num H-Bond Acceptors": Chem.Lipinski.NumHAcceptors(mol),
-                            "TPSA": round(Chem.rdMolDescriptors.CalcTPSA(mol), 2),
-                            "Num Rotatable Bonds": Chem.Lipinski.NumRotatableBonds(mol)
-                        }
+                def get_molecule_info(mol):
+                    return {
+                        "Molecular Weight": round(Chem.Descriptors.MolWt(mol), 2),
+                        "LogP": round(Chem.Crippen.MolLogP(mol), 2),
+                        "Num H-Bond Donors": Chem.Lipinski.NumHDonors(mol),
+                        "Num H-Bond Acceptors": Chem.Lipinski.NumHAcceptors(mol),
+                        "TPSA": round(Chem.rdMolDescriptors.CalcTPSA(mol), 2),
+                        "Num Rotatable Bonds": Chem.Lipinski.NumRotatableBonds(mol)
+                    }
 
-                    info = get_molecule_info(mol)
-                    st.markdown("### Molecule Info:")
-                    for k, v in info.items():
-                        st.markdown(f"**{k}:** {v}")
+                info = get_molecule_info(mol)
+                st.markdown("### Molecule Info:")
+                for k, v in info.items():
+                    st.markdown(f"**{k}:** {v}")
 
-                    st.plotly_chart(plot_distribution(df, 'gcn', prob), use_container_width=True)
+                st.plotly_chart(plot_distribution(df, 'gcn', prob), use_container_width=True)
 
     with st.expander("📌 Example SMILES to Try"):
         st.markdown("""
